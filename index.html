@@ -20,6 +20,12 @@ body{font-family:'Noto Sans CJK KR','Apple SD Gothic Neo',sans-serif;background:
 .toolbar .tt{font-size:14px;font-weight:900;color:var(--accent);margin-right:auto;}
 .tbtn2{background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:7px 13px;font-size:12px;font-weight:800;font-family:inherit;color:#6f6a5e;cursor:pointer;}
 .tbtn2:hover{border-color:#c9bda2;color:var(--ink);}
+.tbtn2.cloud{background:var(--accent2);color:#fff;border-color:var(--accent2);}
+.tbtn2.cloud:hover{background:#175a72;color:#fff;}
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,140%);z-index:80;background:#33302b;color:#fff;padding:12px 20px;border-radius:24px;font-size:13px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.3);transition:transform .25s;max-width:88%;text-align:center;}
+.toast.on{transform:translate(-50%,0);}
+.cloudinfo{font-size:11.5px;color:#8a8375;padding:0 16px 10px;text-align:right;}
+.cloudinfo b{color:var(--accent2);}
 
 .sec{padding:20px 16px 6px;}
 .sect{font-size:15px;font-weight:900;color:var(--accent);margin-bottom:4px;}
@@ -197,11 +203,15 @@ body{font-family:'Noto Sans CJK KR','Apple SD Gothic Neo',sans-serif;background:
 
 <div class="toolbar">
   <span class="tt">🗓️ 내 일정 플래너</span>
-  <button class="tbtn2" onclick="openSave()">💾 저장·불러오기</button>
+  <button class="tbtn2 cloud" onclick="cloudSave()">☁️ 가족 모두에게 저장</button>
+  <button class="tbtn2" onclick="cloudPull()">⟳ 최신 불러오기</button>
+  <button class="tbtn2" onclick="openSave()">💾 코드</button>
   <button class="tbtn2" onclick="window.print()">🖨️ 인쇄</button>
   <button class="tbtn2" onclick="resetAll()">↺ 확정만 남기기</button>
   <button class="tbtn2" onclick="emptyAll()">🗑️ 전부 비우기</button>
 </div>
+
+<div class="cloudinfo" id="cloudinfo">☁️ 가족 공용 일정 확인 중…</div>
 
 <section class="sec">
   <div class="sect">날짜별 일정</div>
@@ -424,7 +434,7 @@ body{font-family:'Noto Sans CJK KR','Apple SD Gothic Neo',sans-serif;background:
   </div>
 </section>
 
-<div class="foot">📖 장소 이름이나 ⓘ 를 누르면 설명·사진·지도·팁이 열려요.<br>일정은 주소창 링크에 함께 저장돼요 — 링크를 즐겨찾기 해두면 다시 열어도 그대로예요.</div>
+<div class="foot">📖 장소 이름이나 ⓘ 를 누르면 설명·사진·지도·팁이 열려요.<br>일정을 바꾼 뒤 <b>☁️ 가족 모두에게 저장</b>을 누르면, 같은 주소로 들어온 가족들도 같은 일정을 보게 돼요.</div>
 </div>
 
 <div class="picker" id="picker">
@@ -433,6 +443,8 @@ body{font-family:'Noto Sans CJK KR','Apple SD Gothic Neo',sans-serif;background:
     <div class="pkb"><button onclick="putTo('d1')">DAY 1</button><button onclick="putTo('d2')">DAY 2</button><button onclick="putTo('d3')">DAY 3</button><button onclick="putTo('d4')">DAY 4</button><button class="pkc" onclick="cancelPick()">취소</button></div>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <div class="overlay" id="ov" onclick="if(event.target===this)closeP()">
   <div class="sheet" id="sheet"></div>
@@ -872,9 +884,60 @@ function openPanel(id){
 function closeP(){document.getElementById("ov").classList.remove("on");document.body.style.overflow="";}
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeP();cancelPick();}});
 
+/* ---------- 공용 저장 (클라우드) ---------- */
+const BLOB="https://jsonblob.com/api/jsonBlob/019fe411-ff62-7a8f-9ceb-932abeed8c46";
+let touched=false;
+document.addEventListener("pointerdown",()=>{touched=true;},{once:true});
+function toast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.classList.add("on");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"),2600);
+}
+function hhmm(iso){
+  try{const d=new Date(iso);return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;}catch(e){return "";}
+}
+function setCloudInfo(txt){ const el=document.getElementById("cloudinfo"); if(el) el.innerHTML=txt; }
+async function cloudGet(){
+  try{
+    const r=await fetch(BLOB,{headers:{"Accept":"application/json"},cache:"no-store"});
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(j&&j.plan&&DKEYS.every(k=>Array.isArray(j.plan[k]))) return j;
+  }catch(e){}
+  return null;
+}
+async function cloudPut(plan,at){
+  try{
+    const r=await fetch(BLOB,{method:"PUT",headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({v:1,plan:plan,at:at||new Date().toISOString()})});
+    return r.ok;
+  }catch(e){ return false; }
+}
+async function cloudSave(){
+  const at=new Date().toISOString();
+  setCloudInfo("☁️ 저장하는 중…");
+  const ok=await cloudPut(ST,at);
+  if(ok){ toast("가족 모두에게 저장됐어요"); setCloudInfo(`☁️ 가족 공용 일정 · 마지막 저장 <b>${hhmm(at)}</b>`); }
+  else { toast("저장에 실패했어요. 잠시 뒤 다시 눌러보세요"); setCloudInfo("☁️ 저장 실패 — 인터넷을 확인해 주세요"); }
+}
+async function cloudPull(){
+  setCloudInfo("☁️ 불러오는 중…");
+  const j=await cloudGet();
+  if(j){ ST=j.plan; renderDays(); toast("최신 일정을 불러왔어요"); setCloudInfo(`☁️ 가족 공용 일정 · 마지막 저장 <b>${hhmm(j.at)}</b>`); }
+  else { toast("불러오지 못했어요"); setCloudInfo("☁️ 불러오기 실패 — 인터넷을 확인해 주세요"); }
+}
+
 /* ---------- 시작 ---------- */
 ST = readHash() || readLocal() || clone(DEFAULT);
 initDZ();
 renderDays();
+(async()=>{
+  const j=await cloudGet();
+  if(!j){ setCloudInfo("☁️ 공용 일정을 불러오지 못했어요 — 이 기기에 저장된 일정을 보고 있어요"); return; }
+  setCloudInfo(`☁️ 가족 공용 일정 · 마지막 저장 <b>${hhmm(j.at)}</b>`);
+  cloudPut(j.plan, j.at);                 // 보관 기간 연장용 갱신
+  if(location.hash.length>1 || touched) return;   // 링크로 왔거나 이미 만지는 중이면 건드리지 않음
+  ST=j.plan; renderDays();
+})();
 </script>
 </body></html>
