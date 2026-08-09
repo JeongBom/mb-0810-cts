@@ -514,10 +514,11 @@ function readLocal(){
   try{const o=JSON.parse(raw); if(o&&DKEYS.every(k=>Array.isArray(o[k]))) return o;}catch(e){}
   return null;
 }
-function syncHash(){
-  const h="#"+packST(ST);
-  try{history.replaceState(null,"",h);}catch(e){try{location.hash=h;}catch(e2){}}
+function syncHash(){          // 주소는 건드리지 않고 이 기기에만 저장
   lsSet(JSON.stringify(ST));
+}
+function stripHash(){
+  try{ history.replaceState(null,"", location.pathname+location.search); }catch(e){}
 }
 
 /* ---------- 렌더 ---------- */
@@ -820,7 +821,7 @@ function openSave(){
       <div class="dhead"><div class="dnum" style="font-size:22px;">저장 · 불러오기</div></div>
       <p style="font-size:13px;color:#6f6a5e;line-height:1.7;margin:8px 0 12px;">
         아래 코드가 지금 짜둔 일정이에요. 복사해서 메모장이나 카톡에 보관해두면, 나중에 붙여넣고 <b>불러오기</b>를 눌러 그대로 되살릴 수 있어요.<br>
-        주소창 링크에도 자동으로 저장되고, 같은 기기·같은 브라우저라면 그냥 다시 열어도 그대로 남아 있어요. 가족들과 나눠 보려면 <b>주소창 링크를 그대로 복사해서</b> 보내주세요.
+평소에는 이걸 쓸 일이 없어요. 가족과 맞추는 건 위쪽 <b>☁️ 가족 모두에게 저장</b>으로 하시면 되고, 이 코드는 인터넷이 안 될 때를 대비한 예비 수단이에요.
       </p>
       <textarea class="savebox" id="savecode">${esc(code)}</textarea>
       <div class="savebtns">
@@ -928,7 +929,9 @@ async function cloudPull(){
 }
 
 /* ---------- 시작 ---------- */
-ST = readHash() || readLocal() || clone(DEFAULT);
+const fromLink = readHash();
+ST = fromLink || readLocal() || clone(DEFAULT);
+stripHash();                  // 주소는 항상 짧게 유지
 initDZ();
 renderDays();
 (async()=>{
@@ -936,7 +939,7 @@ renderDays();
   if(!j){ setCloudInfo("☁️ 공용 일정을 불러오지 못했어요 — 이 기기에 저장된 일정을 보고 있어요"); return; }
   setCloudInfo(`☁️ 가족 공용 일정 · 마지막 저장 <b>${hhmm(j.at)}</b>`);
   cloudPut(j.plan, j.at);                 // 보관 기간 연장용 갱신
-  if(location.hash.length>1 || touched) return;   // 링크로 왔거나 이미 만지는 중이면 건드리지 않음
+  if(fromLink || touched) return;   // 링크로 왔거나 이미 만지는 중이면 건드리지 않음
   ST=j.plan; renderDays();
 })();
 </script>
